@@ -243,7 +243,7 @@ int main(int argc, const char* argv[]) {
     ShowUsage();
     return 1;
   }
-  resultFile = fopen("result","a");
+  resultFile = fopen("result","a+");
   // SDK initilalize including callback functions
   pthread_mutex_init(&mutex, NULL);
   pthread_cond_init(&cond, NULL);
@@ -313,6 +313,7 @@ int main(int argc, const char* argv[]) {
     std::cout << "Failed to open file " << argv[2] << std::endl;
     return 2;
   }
+  fprintf(resultFile,"%s ",argv[2]);
   mobvoi_recognizer_start(recognizer_type);
   pthread_t tid;
   pthread_create(&tid, NULL, send_audio_thread, &test_file);
