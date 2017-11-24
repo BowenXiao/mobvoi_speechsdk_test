@@ -6,18 +6,10 @@
 #include <unistd.h>
 #include <fstream>
 
-#include <stdio.h>
-#include <dirent.h>
-#include <vector>
-
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
-
-#include <unistd.h>
-#include <string.h>
-
 #include "speech_sdk.h"
-using namespace std;
 
 static pthread_mutex_t mutex;
 static pthread_cond_t cond;
@@ -27,14 +19,13 @@ static const int kChannelNum = 2;
 static const int kSampleRate = 16000;
 static const int kLineWrapLength = 100;
 
-FILE *resultFile;
-FILE *sourceFile;
-
 static volatile bool in_the_session = true;
 static volatile mobvoi_recognizer_type
     recognizer_type = MOBVOI_RECOGNIZER_ONLINE_ONEBOX;
 
 static const std::string kAppKey = "2844F2D8DF07F35DB998BDDA9D130708";
+FILE *resultFile;
+
 struct AppCmdOptions {
   mobvoi_recognizer_type recognzier_type;
   std::string record_dev;
@@ -177,7 +168,13 @@ void on_final_transcription(const char* result) {
 
 void on_result(const char* result) {
   std::cout << "--------> dummy on_result: " << result << std::endl;
-  fprintf(resultFile,"%s",result);
+  if (result != NULL && !(std::string(result).empty())) {
+    std::cout << "-----------------------------------------> result len: " << sizeof(result) << std::endl;
+    fprintf(resultFile,"%s\n",result);
+  } else {
+    fprintf(resultFile,"\n");
+  }
+  
   std::string s(result);
   /*for (int i = 0; i < s.size(); i += kLineWrapLength) {
     int len = std::min((int) (s.size() - i), kLineWrapLength);
@@ -205,8 +202,9 @@ void on_result(const char* result) {
 void on_error(int error_code) {
   std::cout << "--------> dummy on_error with error code: " << error_code
             << std::endl;
-   in_the_session = false;  
-   pthread_cond_signal(&cond);       
+   in_the_session = false;
+   fprintf(resultFile,"%d\n",error_code);
+   pthread_cond_signal(&cond);
   /*pthread_mutex_lock(&mutex);
   in_the_session = false;
   pthread_cond_signal(&cond);
@@ -235,47 +233,6 @@ void on_speech_spl_generated(float spl) {
   //           << std::endl;
 }
 
-// void getAllFiles(string path, string fileType) 
-// {
-//   // 文件句柄
-//   long hFile = 0;
-//   // 文件信息
-//   struct _finddata_t fileinfo;
-//   vector<string> files; 
- 
-//   string p;
- 
-//   if ((hFile = _findfirst(p.assign(path).append("/*" + fileType).c_str(), &fileinfo)) != -1) {
-//     do {
-//       // 保存文件的全路径
-//       files.push_back(p.assign(path).append("/").append(fileinfo.name));
-//       std::cout << "--------> files: " << files << std::endl;
- 
-//       } while (_findnext(hFile, &fileinfo) == 0); //寻找下一个，成功返回0，否则-1
- 
-//     _findclose(hFile);
-//     return files
-//   }
-// }
-
-int readTrancripts(const char* basePath){
-  std::ifstream fin(basePath);
-  const int LINE_LENGTH = 1024;
-  char str[LINE_LENGTH];
-  char outStr[LINE_LENGTH];
-  char temp[LINE_LENGTH];
-  char *pch;
-  while(fin.getline(str,LINE_LENGTH)){
-      strcpy(temp,str);
-      trimSpace(temp,outStr);
-      fprintf(sourceFile,"%s\n", outStr);
-      startASR(str);  
-      memset(str,0,LINE_LENGTH);
-      memset(outStr,0,LINE_LENGTH);
-      memset(outStr,0,LINE_LENGTH);    
-   }
-}
-
 int main(int argc, const char* argv[]) {
   if (argc != 3) {
     ShowUsage();
@@ -293,18 +250,7 @@ int main(int argc, const char* argv[]) {
     ShowUsage();
     return 1;
   }
-
-  char *pch;
-  char temp[600];
-  strcpy(temp,input);
-  pch = strtok(input," ");
-  fprintf(resultFile,"%s ",pch);
-  
-  char path[80];
-  //contact path 
-  strcpy(path,"./res/");
-  strcat(path,pch);
-
+  resultFile = fopen("result","a+");
   // SDK initilalize including callback functions
   pthread_mutex_init(&mutex, NULL);
   pthread_cond_init(&cond, NULL);
@@ -374,6 +320,7 @@ int main(int argc, const char* argv[]) {
     std::cout << "Failed to open file " << argv[2] << std::endl;
     return 2;
   }
+  fprintf(resultFile,"%s ",argv[2]);
   mobvoi_recognizer_start(recognizer_type);
   pthread_t tid;
   pthread_create(&tid, NULL, send_audio_thread, &test_file);
@@ -384,7 +331,7 @@ int main(int argc, const char* argv[]) {
     std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>> waitting" << std::endl;
   }
   pthread_mutex_unlock(&mutex);
-
+  fclose(resultFile);
   // SDK Clean up
   std::cout << "start sdk cleanup" << std::endl;
   mobvoi_sdk_cleanup();

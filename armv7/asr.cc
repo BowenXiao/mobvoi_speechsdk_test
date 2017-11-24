@@ -168,7 +168,13 @@ void on_final_transcription(const char* result) {
 
 void on_result(const char* result) {
   std::cout << "--------> dummy on_result: " << result << std::endl;
-  fprintf(resultFile,"%s\n",result);
+  if (result != NULL && !(std::string(result).empty())) {
+    std::cout << "-----------------------------------------> result len: " << sizeof(result) << std::endl;
+    fprintf(resultFile,"%s\n",result);
+  } else {
+    fprintf(resultFile,"\n");
+  }
+  
   std::string s(result);
   /*for (int i = 0; i < s.size(); i += kLineWrapLength) {
     int len = std::min((int) (s.size() - i), kLineWrapLength);
@@ -196,8 +202,9 @@ void on_result(const char* result) {
 void on_error(int error_code) {
   std::cout << "--------> dummy on_error with error code: " << error_code
             << std::endl;
-   in_the_session = false;  
-   pthread_cond_signal(&cond);       
+   in_the_session = false;
+   fprintf(resultFile,"%d\n",error_code);
+   pthread_cond_signal(&cond);
   /*pthread_mutex_lock(&mutex);
   in_the_session = false;
   pthread_cond_signal(&cond);
