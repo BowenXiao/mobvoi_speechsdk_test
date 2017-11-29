@@ -3,62 +3,102 @@
 import sys, os, commands
 # import json
 import re
-# import xlwt, csv
+import csv
 
 WORKSPACE = sys.path[0]
-RESULT_FILE = os.path.join(WORKSPACE,'result')
+RESULT_FILE = os.path.join(WORKSPACE,'result_offline')
 RES_DIR = "./res/"
 AUDIO_FILE_FORMAT = '.wav'
 
 def getAudioNames():
-	names = commands.getoutput("cat %s | awk  '{print $1}'"%RESULT_FILE)
+	'''
+	获取所有音频文件名
+	return list
+	'''
 	p = re.compile('\./res/(.*)\.wav')
+	names = commands.getoutput("cat %s | awk  '{print $1}'"%RESULT_FILE)
 	audio_name_list = re.findall(p, names)
 	return audio_name_list
 
-def getNLU():
-	nlu_list = commands.getoutput("cat %s | awk  '{print $2}'"%RESULT_FILE).split('\n')
-	return nlu_list
+def getIntent():
+	'''
+	获取所有Intent结果
+	return list
+	'''
+	p = re.compile('wav (.*)\n')
+	Intent_list = commands.getoutput("cat %s"%RESULT_FILE)
+	Intent_list = re.findall(p, Intent_list)
+	# print Intent_list[0]
+	return Intent_list
 
-def buildResult():
-	nlu_list = [eval(nlu) for nlu in getNLU()]
-	audio_name_list = getAudioNames()
-	mNLU = []
-	update_key = ['clientAction','extras']
-	for nlu in nlu_list:
-		index = nlu_list.index(nlu)
-		nlu['name'] = audio_name_list[index]
-		#　将n dimension数据扁平处理为one dimension.
-		for key in update_key:
-			nlu.update(nlu[key])
-			nlu.pop(key)
-		# 将无效的GARBAGE数据归一化为一个Vector,仅保存query的值
-		if nlu['query'] == 'GARBAGE':
-			nlu.pop('domain')
-			nlu.pop('action')
-		#　异常数据处理
-		elif not isinstance(nlu,dict):
-			nlu['query'] = 'error'
-		mNLU.append(nlu)
-	# print mNLU
-	return mNLU
+def dget(dictionary, cmd, default=None):
+	'''
+	获取嵌套字典中的value
+	'''
+	cmd_list = cmd.split('.')
+	tmp = dict(dictionary)
+	for c in cmd_list:
+		try:
+			val = tmp.get(c, None)
+		except AttributeError:
+			return default
+		if val!= None:
+			tmp = val
+		else:
+			return default
+	return tmp
+
+def buildmResult():
+	'''
+	生成测试结果字典集
+	return list
+	'''
+	intents = [eval(intent) for intent in getIntent()]
+	audios = getAudioNames()
+	mRet=[]
+	for index in range(len(intents)):
+		result={}
+		intent = intents[index]
+		#　返回error code时，将其转换成字典统一处理
+		if isinstance(intents[index],int):
+			intent = {}
+		result['name'] = audios[index]
+		result.update(intent)
+		# print result
+		mRet.append(result)
+	return mRet
 
 def buildRaw():
-	datas = buildResult()
-	print datas
+	'''
+	生成CSV文件并将结果按照固定格式写入
+	'''
+	datas = buildmResult()
 	# print datas
 	with open('Result.csv','w') as f:
 		writer = csv.writer(f)
 		for data in datas:
-			# data = json.dumps(data,encoding="UTF-8",ensure_ascii=False)
-			# 将结果以固定顺序写入csv保证结果的可读性
-			f.write("%s,%s,,,,,Intent,"%(data.pop('name'),data.pop('query')))
-			if 'domain' in data.keys():
-				f.write("%s=%s,"%('domain',data.pop('domain')))
-			if 'action' in data.keys():
-				f.write("%s=%s,"%('action',data.pop('action')))
-			for key in data.keys():
-				f.write("%s=%s,"%(key,data[key]))
+			if len(data) > 2:
+				f.write("%s,%s,,,,,"%(dget(data,'name'),dget(data,'query')))
+				if 'domain' in data.keys():
+					f.write("%s=%s,"%('domain',dget(data,'domain')))
+					# print ">>>>>>>>>> domain: " + dget(data,'domain')
+				else:
+					# print ">>>>>>>>>> domain: NULL"
+					f.write("NULL,")
+				if 'action' in dget(data,'clientAction'):
+					f.write("%s=%s,"%('action',dget(data,'clientAction.action')))
+					# print ">>>>>>>>>> action: " + dget(data,'clientAction.action')
+				else:
+					# print ">>>>>>>>>> action: NULL"
+					f.write("NULL,")
+				#将extras中所有key的值写入CSV
+				if dget(data,'clientAction.extras'):
+					for key in dget(data,'clientAction.extras').keys():
+						f.write("%s=%s,"%(key,dget(data,'clientAction.extras.%s'%key)))
+						# print ">>>>>>>>>> extras: " + dget(data,'clientAction.extras')
+			# 将返回error code的数据按照特殊格式处理
+			else:
+				f.write("%s,NULL,,,,,"%(dget(data,'name')))
 			f.write("\r")
 
 if __name__ == '__main__':
